@@ -234,9 +234,85 @@
                     }
                 }]
             }
+        },
+        "InstallationPolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyName": "MSAM-Installation-Policy",
+                "PolicyDocument": {
+                    "Statement": [{
+                        "Action": [
+                            "apigateway:*",
+                            "cloudformation:*",
+                            "cloudfront:*",
+                            "cloudwatch:*",
+                            "dynamodb:*",
+                            "events:*",
+                            "lambda:*",
+                            "s3:*",
+                            "sns:*",
+                            "ssm:*"
+                        ],
+                        "Effect": "Allow",
+                        "Resource": "*"
+                    }, {
+                        "Action": [
+                            "iam:*"
+                        ],
+                        "Effect": "Allow",
+                        "Resource": "*"
+                    }]
+                },
+                "Groups": [{ "Ref": "InstallationGroup" }]
+            }
+        },
+        "InstallationGroup": {
+            "Type": "AWS::IAM::Group"
+        },
+        "InstallationManagedPolicy": {
+            "Type": "AWS::IAM::ManagedPolicy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "apigateway:*",
+                                "cloudformation:*",
+                                "cloudfront:*",
+                                "cloudwatch:*",
+                                "dynamodb:*",
+                                "events:*",
+                                "lambda:*",
+                                "s3:*",
+                                "sns:*",
+                                "ssm:*"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": "*"
+                        }
+                    ]
+                }
+            }
         }
     },
     "Outputs": {
+        "InstallationManagedPolicy": {
+            "Value": { "Ref": "InstallationManagedPolicy" }
+        },
+        "InstallationGroupLink": {
+            "Value": {
+                "Fn::Join": [
+                    "", [{
+                            "Fn::Sub": "https://console.aws.amazon.com/iam/home?#/groups/"
+                        },
+                        {
+                            "Ref": "InstallationGroup"
+                        }
+                    ]
+                ]
+            },
+            "Description": "Link to IAM to view and assign users to the installation group"
+        },
         "EventsRoleARN": {
             "Value": {
                 "Fn::GetAtt": [
