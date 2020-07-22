@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Media Services Application Mapper (MSAM) (SO0048) (ID: 1587415980)",
+    "Description": "Media Services Application Mapper (MSAM) (SO0048) (ID: 1587415980.1 iFit Customized)",
     "Resources": {
         "IAMModuleStack": {
             "Type": "AWS::CloudFormation::Stack",
@@ -15,16 +15,12 @@
                                     [
                                         "https://",
                                         {
-                                            "Ref": "BucketBasename"
-                                        },
-                                        "-",
-                                        {
-                                            "Ref": "AWS::Region"
+                                            "Ref": "OverrideBucketName"
                                         }
                                     ]
                                 ]
                             },
-                            ".s3.amazonaws.com/msam/msam-iam-roles-release-1587415980.template"
+                            ".s3.amazonaws.com/msam/msam-iam-roles-release-1587415980.1.template"
                         ]
                     ]
                 }
@@ -265,6 +261,14 @@
         "BucketBasename": {
             "Default": "rodeolabz",
             "Description": "This is the basename of the bucket that holds the MSAM code base.",
+            "Type": "String",
+            "AllowedPattern": "\\S+",
+            "MinLength": 1,
+            "ConstraintDescription": "Please enter a value for this field."
+        },
+        "OverrideBucketName": {
+            "Default": "cf-templates-yd9drq7kk5hf-us-east-1",
+            "Description": "This is the name of bucket that holds overriden IAM Module Stack CFN template customized by iFit",
             "Type": "String",
             "AllowedPattern": "\\S+",
             "MinLength": 1,

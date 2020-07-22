@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Media Services Application Mapper(MSAM) IAM Roles (ID: 1587415980)",
+    "Description": "Media Services Application Mapper(MSAM) IAM Roles (ID: 1587415980.1 iFit Customized)",
     "Resources": {
         "EventsRole": {
             "Type": "AWS::IAM::Role",
@@ -234,57 +234,9 @@
                     }
                 }]
             }
-        },
-        "InstallationPolicy": {
-            "Type": "AWS::IAM::Policy",
-            "Properties": {
-                "PolicyName": "MSAM-Installation-Policy",
-                "PolicyDocument": {
-                    "Statement": [{
-                        "Action": [
-                            "apigateway:*",
-                            "cloudformation:*",
-                            "cloudfront:*",
-                            "cloudwatch:*",
-                            "dynamodb:*",
-                            "events:*",
-                            "lambda:*",
-                            "s3:*",
-                            "sns:*",
-                            "ssm:*"
-                        ],
-                        "Effect": "Allow",
-                        "Resource": "*"
-                    }, {
-                        "Action": [
-                            "iam:*"
-                        ],
-                        "Effect": "Allow",
-                        "Resource": "*"
-                    }]
-                },
-                "Groups": [{ "Ref": "InstallationGroup" }]
-            }
-        },
-        "InstallationGroup": {
-            "Type": "AWS::IAM::Group"
         }
     },
     "Outputs": {
-        "InstallationGroupLink": {
-            "Value": {
-                "Fn::Join": [
-                    "", [{
-                            "Fn::Sub": "https://console.aws.amazon.com/iam/home?#/groups/"
-                        },
-                        {
-                            "Ref": "InstallationGroup"
-                        }
-                    ]
-                ]
-            },
-            "Description": "Link to IAM to view and assign users to the installation group"
-        },
         "EventsRoleARN": {
             "Value": {
                 "Fn::GetAtt": [
