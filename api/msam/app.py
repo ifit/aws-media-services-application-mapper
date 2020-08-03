@@ -28,9 +28,6 @@ SSM_NODE_UPDATE_RATE_MINUTES = 5
 # update connections at this interval
 CONNECTION_UPDATE_RATE_MINUTES = 5
 
-# update subscribed alarm states at this interval
-ALARM_UPDATE_RATE_MINUTES = 1
-
 # update MSAM visuals from tags at this interval
 TAG_UPDATE_RATE_MINUTES = 5
 
@@ -143,6 +140,14 @@ def cached_by_service_region(service, region):
     return cache.cached_by_service_region(service, region)
 
 
+@app.route('/cached/{service}', cors=True, api_key_required=True, methods=['GET'])
+def cached_by_service_region(service, region):
+    """
+    API entry point to retrieve items from the cache under the service.
+    """
+    return cache.cached_by_service(service)
+
+
 @app.route('/cached/arn/{arn}', cors=True, api_key_required=True, methods=['GET'])
 def cached_by_arn(arn):
     """
@@ -242,9 +247,17 @@ def all_subscribed_alarms():
 @app.route('/cloudwatch/events/state/{state}', cors=True, api_key_required=True, methods=['GET'])
 def get_cloudwatch_events_state(state):
     """
-    API entry point to retrieve all pipeline events in a given state (set, clear).
+    API entry point to retrieve all alert events in a given state (set, clear).
     """
     return cloudwatch_data.get_cloudwatch_events_state(state)
+
+
+@app.route('/cloudwatch/events/state/{state}/{source}', cors=True, api_key_required=True, methods=['GET'])
+def get_cloudwatch_events_state_source(state, source):
+    """
+    API entry point to retrieve all alert events in a given state (set, clear) from a specific source.
+    """
+    return get_cloudwatch_events_state_source(state, source)
 
 
 @app.route('/cloudwatch/events/state/{state}/groups', cors=True, api_key_required=True, methods=['GET'])
@@ -314,14 +327,6 @@ def update_connections(_):
     Entry point for the CloudWatch scheduled task to discover and cache services.
     """
     return periodic_handlers.update_connections()
-
-
-@app.schedule(Rate(ALARM_UPDATE_RATE_MINUTES, unit=Rate.MINUTES))
-def update_alarms(_):
-    """
-    Entry point for the CloudWatch scheduled task to discover and cache services.
-    """
-    return periodic_handlers.update_alarms()
 
 
 @app.schedule(Rate(TAG_UPDATE_RATE_MINUTES, unit=Rate.MINUTES))

@@ -25,6 +25,76 @@ CLOUDWATCH_EVENTS_TABLE_NAME = os.environ["CLOUDWATCH_EVENTS_TABLE_NAME"]
 STAMP = os.environ["BUILD_STAMP"]
 MSAM_BOTO3_CONFIG = Config(user_agent="aws-media-services-applications-mapper/{stamp}/cloudwatch.py".format(stamp=STAMP))
 
+
+def update_alarm_records(region_name, alarm, subscriber_arns):
+    """
+    Update a single alarm's status in the table.
+    """
+    try:
+        ddb_table_name = ALARMS_TABLE_NAME
+        ddb_resource = boto3.resource('dynamodb', config=MSAM_BOTO3_CONFIG)
+        ddb_table = ddb_resource.Table(ddb_table_name)
+        region_alarm_name = "{}:{}".format(region_name, alarm["AlarmName"])
+        if 'Namespace' in alarm:
+            namespace = alarm['Namespace']
+        else:
+            namespace = "n/a"
+        updated = int(time.time())
+        for resource_arn in subscriber_arns:
+            item = {
+                "RegionAlarmName": region_alarm_name,
+                "ResourceArn": resource_arn,
+                "StateValue": alarm['StateValue'],
+                "Namespace": namespace,
+                "StateUpdated": int(alarm['StateUpdatedTimestamp'].timestamp()),
+                "Updated": updated
+            }
+            ddb_table.put_item(Item=item)
+    except ClientError as error:
+        print(error)
+
+
+def update_alarm_subscriber(region_name, alarm_name, subscriber_arn):
+    """
+    Update a single subscriber's alarm status in the alarms table.
+    """
+    try:
+        print(f"update subscriber {subscriber_arn} alarm {alarm_name} in region {region_name}")
+        cloudwatch = boto3.client('cloudwatch', region_name=region_name, config=MSAM_BOTO3_CONFIG)
+        response = cloudwatch.describe_alarms(AlarmNames=[alarm_name])
+        alarms = response['CompositeAlarms'] + response['MetricAlarms']
+        for alarm in alarms:
+            update_alarm_records(region_name, alarm, [subscriber_arn])
+    except ClientError as error:
+        print(error)
+
+
+def update_alarms(region_name, alarm_names):
+    """
+    Update a list of alarms' status in the alarms table for a given region.
+    """
+    try:
+        print(f"update alarms {alarm_names} in region {region_name}")
+        cloudwatch = boto3.client('cloudwatch', region_name=region_name, config=MSAM_BOTO3_CONFIG)
+        response = cloudwatch.describe_alarms(AlarmNames=alarm_names)
+        alarms = response['CompositeAlarms'] + response['MetricAlarms']
+        for alarm in alarms:
+            print(f"alarm {alarm['AlarmName']}")
+            subscribers = subscribers_to_alarm(alarm["AlarmName"], region_name)
+            print(f"subscribers {subscribers}")
+            update_alarm_records(region_name, alarm, subscribers)
+        while "NextToken" in response:
+            response = cloudwatch.describe_alarms(AlarmNames=alarm_names, NextToken=response["NextToken"])
+            alarms = response['CompositeAlarms'] + response['MetricAlarms']
+            for alarm in alarms:
+                print(f"alarm {alarm['AlarmName']}")
+                subscribers = subscribers_to_alarm(alarm["AlarmName"], region_name)
+                print(f"subscribers {subscribers}")
+                update_alarm_records(region_name, alarm, subscribers)
+    except ClientError as error:
+        print(error)
+
+
 def alarms_for_subscriber(resource_arn):
     """
     API entry point to return all alarms subscribed to by a node.
@@ -87,25 +157,18 @@ def all_subscribed_alarms():
     return [dict(t) for t in {tuple(d.items()) for d in split_items}]
 
 
-def filtered_alarm(alarm):
+def filtered_alarm(alarm, substituteText=None):
     """
     Restructure a CloudWatch alarm into a simpler form.
     """
-    arn = [match.value for match in parse('$..AlarmArn').find(alarm)]
-    name = [match.value for match in parse('$..AlarmName').find(alarm)]
-    metric = [match.value for match in parse('$..MetricName').find(alarm)]
-    namespace = [match.value for match in parse('$..Namespace').find(alarm)]
-    state = [match.value for match in parse('$..StateValue').find(alarm)]
-    updated = [match.value for match in parse('$..StateUpdatedTimestamp').find(alarm)]
     filtered = {
-        "AlarmArn": arn[0] if arn else None,
-        "AlarmName": name[0] if name else None,
-        "MetricName": metric[0] if metric else None,
-        "Namespace": namespace[0] if namespace else None,
-        "StateValue": state[0] if state else None,
-        "StateUpdated": int(updated[0].timestamp()) if updated else None
+        "AlarmArn": alarm.get('AlarmArn', None),
+        "AlarmName": alarm.get('AlarmName', None),
+        "MetricName": alarm.get('MetricName', substituteText),
+        "Namespace": alarm.get('Namespace', substituteText),
+        "StateValue": alarm.get('StateValue', None),
+        "StateUpdated": int(alarm['StateUpdatedTimestamp'].timestamp()) if 'StateUpdatedTimestamp' in alarm else None
     }
-    print(filtered)
     return filtered
 
 
@@ -119,17 +182,16 @@ def get_cloudwatch_alarms_region(region):
         client = boto3.client('cloudwatch', region_name=region, config=MSAM_BOTO3_CONFIG)
         response = client.describe_alarms()
         # return the response or an empty object
-        if "MetricAlarms" in response:
-            for alarm in response["MetricAlarms"]:
-                # print(json.dumps(alarm, default=str))
-                alarms.append(filtered_alarm(alarm))
+        for alarm in response.get("MetricAlarms",[]):
+            alarms.append(filtered_alarm(alarm, substituteText="(anomaly detector)"))
+        for alarm in response.get('CompositeAlarms',[]):
+            alarms.append(filtered_alarm(alarm, substituteText="(composite)"))
         while "NextToken" in response:
             response = client.describe_alarms(NextToken=response["NextToken"])
-            # return the response or an empty object
-            if "MetricAlarms" in response:
-                for alarm in response["MetricAlarms"]:
-                    # print(json.dumps(alarm, default=str))
-                    alarms.append(filtered_alarm(alarm))
+            for alarm in response.get("MetricAlarms",[]):
+                alarms.append(filtered_alarm(alarm, substituteText="(anomaly detector)"))
+            for alarm in response.get('CompositeAlarms',[]):
+                alarms.append(filtered_alarm(alarm, substituteText="(composite)"))
     except ClientError as error:
         print(error)
     return alarms
@@ -147,10 +209,23 @@ def get_cloudwatch_events_state(state):
         events = response["Items"]
     return events
 
+def get_cloudwatch_events_state_source(state, source):
+    """
+    API entry point to retrieve all pipeline events in a given state (set, clear) from a specific source.
+    """
+    events = []
+    dynamodb = boto3.resource('dynamodb', config=MSAM_BOTO3_CONFIG)
+    table = dynamodb.Table(EVENTS_TABLE_NAME)
+    response = table.query(IndexName='AlarmStateSourceIndex', KeyConditionExpression=Key('alarm_state').eq(state) & Key('source').eq(source))
+    if "Items" in response:
+        events = response["Items"]
+    return events
+
 
 def get_cloudwatch_events_state_groups(state):
     """
-    Group all events by down, degraded and running pipelines
+    Group all events by down, degraded and running pipelines.
+    Currently only applicable to aws.medialive source which includes MediaLive channel and multiplex.
     """
     group = {}
     group["down"] = []
@@ -158,29 +233,33 @@ def get_cloudwatch_events_state_groups(state):
     group["degraded"] = []
     events = get_cloudwatch_events_state(state)
     for event in events:
-        arn = event["resource_arn"]
-        pl = event["detail"]["pipeline"]
-        def is_same_arn(i):
-            return bool(i["resource_arn"] == arn)
-        def is_same_pl(i):
-            return bool("pipeline" in i["detail"] and i["detail"]["pipeline"] == pl)
-        def is_diff_pl(i):
-            return bool("pipeline" in i["detail"] and i["detail"]["pipeline"] != pl)
-        def is_pl_down(i):
-            return bool("pipeline_state" in i["detail"] and not i["detail"]["pipeline_state"])
-        same_arn_events = list(filter(is_same_arn, events))
-        all_down_pipelines = list(filter(is_pl_down, same_arn_events))
-        same_down_pipelines = list(filter(is_same_pl, all_down_pipelines))
-        diff_down_pipelines = list(filter(is_diff_pl, all_down_pipelines))
-        if len(diff_down_pipelines) > 0 and len(same_down_pipelines) == 0:
-            event["detail"]["degraded"] = bool(True)
-            group["degraded"].append(event)
-        elif len(diff_down_pipelines) == 0 and len(same_down_pipelines) > 0:
-            event["detail"]["degraded"] = bool(True)
-            group["degraded"].append(event)
-        elif len(diff_down_pipelines) > 0 and len(same_down_pipelines) > 0:
-            event["detail"]["degraded"] = bool(False)
-            group["down"].append(event)
+        if "pipeline" in event["detail"]:
+            arn = event["resource_arn"]
+            pl = event["detail"]["pipeline"]
+            def is_same_arn(i):
+                return bool(i["resource_arn"] == arn)
+            def is_same_pl(i):
+                return bool("pipeline" in i["detail"] and i["detail"]["pipeline"] == pl)
+            def is_diff_pl(i):
+                return bool("pipeline" in i["detail"] and i["detail"]["pipeline"] != pl)
+            def is_pl_down(i):
+                return bool("pipeline_state" in i["detail"] and not i["detail"]["pipeline_state"])
+            same_arn_events = list(filter(is_same_arn, events))
+            all_down_pipelines = list(filter(is_pl_down, same_arn_events))
+            same_down_pipelines = list(filter(is_same_pl, all_down_pipelines))
+            diff_down_pipelines = list(filter(is_diff_pl, all_down_pipelines))
+            if len(diff_down_pipelines) > 0 and len(same_down_pipelines) == 0:
+                event["detail"]["degraded"] = bool(True)
+                group["degraded"].append(event)
+            elif len(diff_down_pipelines) == 0 and len(same_down_pipelines) > 0:
+                event["detail"]["degraded"] = bool(True)
+                group["degraded"].append(event)
+            elif len(diff_down_pipelines) > 0 and len(same_down_pipelines) > 0:
+                event["detail"]["degraded"] = bool(False)
+                group["down"].append(event)
+            else:
+                event["detail"]["degraded"] = bool(False)
+                group["running"].append(event)
         else:
             event["detail"]["degraded"] = bool(False)
             group["running"].append(event)
@@ -269,6 +348,7 @@ def subscribe_resource_to_alarm(request, alarm_name, region):
             # store it
             item = {"RegionAlarmName": region_alarm_name, "ResourceArn": resource_arn}
             ddb_table.put_item(Item=item)
+            update_alarm_subscriber(region, alarm_name, resource_arn)
         return True
     except ClientError as error:
         print(error)

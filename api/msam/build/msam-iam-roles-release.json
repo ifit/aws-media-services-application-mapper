@@ -16,8 +16,12 @@
                             "Sid": "VisualEditor0",
                             "Effect": "Allow",
                             "Action": [
+                                "cloudwatch:DescribeAlarms",
                                 "dynamodb:PutItem",
-                                "mediapackage:Describe*"
+                                "dynamodb:Query",
+                                "dynamodb:UpdateItem",
+                                "mediapackage:Describe*",
+                                "medialive:Describe*"
                             ],
                             "Resource": "*"
                         }]
@@ -240,6 +244,7 @@
             "Properties": {
                 "PolicyName": "MSAM-Installation-Policy",
                 "PolicyDocument": {
+                    "Version": "2012-10-17",
                     "Statement": [{
                         "Action": [
                             "apigateway:*",
@@ -268,9 +273,36 @@
         },
         "InstallationGroup": {
             "Type": "AWS::IAM::Group"
+        },
+        "InstallationManagedPolicy": {
+            "Type": "AWS::IAM::ManagedPolicy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Action": [
+                            "apigateway:*",
+                            "cloudformation:*",
+                            "cloudfront:*",
+                            "cloudwatch:*",
+                            "dynamodb:*",
+                            "events:*",
+                            "lambda:*",
+                            "s3:*",
+                            "sns:*",
+                            "ssm:*"
+                        ],
+                        "Effect": "Allow",
+                        "Resource": "*"
+                    }]
+                }
+            }
         }
     },
     "Outputs": {
+        "InstallationManagedPolicy": {
+            "Value": { "Ref": "InstallationManagedPolicy" }
+        },
         "InstallationGroupLink": {
             "Value": {
                 "Fn::Join": [

@@ -48,7 +48,7 @@
                                     ]
                                 ]
                             },
-                            ".s3.amazonaws.com/msam/msam-dynamodb-release-1587415980.template"
+                            ".s3.amazonaws.com/msam/msam-dynamodb-release-1594682397.template"
                         ]
                     ]
                 },
@@ -87,7 +87,7 @@
                                     ]
                                 ]
                             },
-                            ".s3.amazonaws.com/msam/msam-core-release-1587415980.template"
+                            ".s3.amazonaws.com/msam/msam-core-release-1594682397.template"
                         ]
                     ]
                 },
@@ -168,11 +168,17 @@
                                     ]
                                 ]
                             },
-                            ".s3.amazonaws.com/msam/msam-events-release-1587415980.template"
+                            ".s3.amazonaws.com/msam/msam-events-release-1594682397.template"
                         ]
                     ]
                 },
                 "Parameters": {
+                    "AlarmsTableName": {
+                        "Fn::GetAtt": [
+                            "DynamoDBModuleStack",
+                            "Outputs.AlarmsTable"
+                        ]
+                    },
                     "EventsTableName": {
                         "Fn::GetAtt": [
                             "DynamoDBModuleStack",
@@ -231,7 +237,7 @@
                                     ]
                                 ]
                             },
-                            ".s3.amazonaws.com/msam/msam-browser-app-release-1587415980.template"
+                            ".s3.amazonaws.com/msam/msam-browser-app-release-1594682397.template"
                         ]
                     ]
                 },

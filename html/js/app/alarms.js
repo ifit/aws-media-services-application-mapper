@@ -6,6 +6,8 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
 
         var listeners = [];
 
+        var region_cache_clear_interval_ms = 60000;
+
         // cache alarms in 'set' state
         // several modules use this at the same time
 
@@ -37,7 +39,7 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
         };
 
 
-        var all_alarms_for_region = function(region) {
+        var all_alarms_for_region = _.memoize(function(region) {
             var current_connection = connections.get_current();
             var url = current_connection[0];
             var api_key = current_connection[1];
@@ -52,7 +54,7 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
                     reject(error);
                 });
             });
-        };
+        });
 
         var alarms_for_subscriber = _.memoize(function(arn) {
             var current_connection = connections.get_current();
@@ -78,8 +80,9 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
             var current_endpoint = `${url}/cloudwatch/alarm/${alarm_name}/region/${region}/subscribe`;
             return new Promise(function(resolve, reject) {
                 server.post(current_endpoint, api_key, resource_arns).then(function(response) {
-                    // console.log(response);
-                    clear_function_cache();
+                    for (let arn of resource_arns) {
+                        clear_alarms_for_subscriber_cache(arn);
+                    }
                     resolve(response);
                 }).catch(function(error) {
                     console.log(error);
@@ -89,7 +92,7 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
         };
 
         var unsubscribe_from_alarm = function(region, alarm_name, resource_arns) {
-            console.log(region, alarm_name, resource_arns);
+            // console.log(region, alarm_name, resource_arns);
             var current_connection = connections.get_current();
             var url = current_connection[0];
             var api_key = current_connection[1];
@@ -97,8 +100,9 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
             var current_endpoint = `${url}/cloudwatch/alarm/${alarm_name}/region/${region}/unsubscribe`;
             return new Promise(function(resolve, reject) {
                 server.post(current_endpoint, api_key, resource_arns).then(function(response) {
-                    console.log(response);
-                    clear_function_cache();
+                    for (let arn of resource_arns) {
+                        clear_alarms_for_subscriber_cache(arn);
+                    }
                     resolve(response);
                 }).catch(function(error) {
                     console.log(error);
@@ -107,11 +111,20 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
             });
         };
 
-        var clear_function_cache = function() {
-            alarms_for_subscriber.cache.clear();
+        var clear_alarms_for_subscriber_cache = function(subscribers) {
+            if (Array.isArray(subscribers)) {
+                for (let subscriber of subscribers) {
+                    alarms_for_subscriber.cache.delete(subscriber.ResourceArn);
+                }
+            } else if (typeof subscribers == 'string') {
+                alarms_for_subscriber.cache.delete(subscribers);
+            } else {
+                alarms_for_subscriber.cache.clear();
+            }
         };
 
         var cache_update = function() {
+            // console.log("cache_update()");
             subscribers_with_alarm_state("ALARM").then(function(response) {
                 // console.log("updated set event cache");
                 previous_subscribers_with_alarms = current_subscribers_with_alarms;
@@ -119,6 +132,8 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
                 var added = _.differenceBy(current_subscribers_with_alarms, previous_subscribers_with_alarms, "ResourceArn");
                 var removed = _.differenceBy(previous_subscribers_with_alarms, current_subscribers_with_alarms, "ResourceArn");
                 if (added.length || removed.length) {
+                    clear_alarms_for_subscriber_cache(added);
+                    clear_alarms_for_subscriber_cache(removed);
                     for (let f of listeners) {
                         f(current_subscribers_with_alarms, previous_subscribers_with_alarms);
                     }
@@ -154,6 +169,14 @@ define(["lodash", "app/server", "app/connections", "app/settings"],
         };
 
         load_update_interval();
+
+        setInterval(function() {
+            try {
+                all_alarms_for_region.cache.clear();
+            } catch (error) {
+                console.log(error);
+            }
+        }, region_cache_clear_interval_ms);
 
         return {
             "get_subscribers_with_alarms": function() {
